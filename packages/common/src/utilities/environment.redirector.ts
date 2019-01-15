@@ -6,7 +6,7 @@ import ensureFreshLocalStorage from './ensure.fresh.local.storage';
 /** Checks (and redirects) if needs to go to a different environment.
  * Returns `true` if will be redirecting away
  */
-function redirectIfNeeded(): boolean {
+async function redirectIfNeeded(): Promise<boolean> {
   try {
     const params = parse(window.location.search) as {
       originEnvironment?: string;
@@ -58,6 +58,34 @@ function redirectIfNeeded(): boolean {
         'originEnvironment=',
         encodeURIComponent(window.location.origin),
       ].join('');
+
+      // When redirecting to localhost (dev scenario), it's very common that localhost
+      // might not be running, and suddenly you're stuck even for testing the production add-in/site.
+      // As such, if it's localhost, first check that localhost is running
+      if (redirectUrl.startsWith(editorUrls.cdn /* FIXME 'https://localhost' */)) {
+        const aliveChecker = document.createElement('iframe');
+        aliveChecker.style.display = 'none';
+        aliveChecker.src = `${editorUrls.local}/alive.html`;
+
+        await new Promise(resolve => {
+          const handler = (event: MessageEvent) => {
+            if (
+              isAllowedUrl(event.origin) &&
+              event.data === 'alive' /* the message sent in "alive.html" */
+            ) {
+              document.removeEventListener('message', handler);
+              resolve(event.data);
+              debugger; // FIXME do a timer for giving up, as well.  And maybe a message.
+              // FIXME also do a banner.
+            }
+          };
+
+          window.addEventListener('message', handler, false);
+          document.body.appendChild(aliveChecker);
+        });
+
+        debugger;
+      }
 
       window.location.replace(
         [
